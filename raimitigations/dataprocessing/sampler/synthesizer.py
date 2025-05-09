@@ -2,9 +2,12 @@ import os
 from typing import Union
 
 import numpy as np
+
 import pandas as pd
-from sdv.tabular.base import BaseTabularModel
-from sdv.tabular import GaussianCopula, CTGAN, CopulaGAN, TVAE
+from sdv.single_table.base import BaseSingleTableSynthesizer
+from sdv.single_table.copulas import GaussianCopulaSynthesizer
+from sdv.single_table.ctgan import CTGANSynthesizer, TVAESynthesizer
+from sdv.single_table.copulagan import CopulaGANSynthesizer
 from sdv.sampling import Condition
 
 from ..data_processing import DataProcessing, DataFrameInfo
@@ -125,7 +128,7 @@ class Synthesizer(DataProcessing):
         X: pd.DataFrame = None,
         y: pd.DataFrame = None,
         transform_pipe: list = None,
-        model: Union[BaseTabularModel, str] = "ctgan",
+        model: Union[BaseSingleTableSynthesizer, str] = "ctgan",
         epochs: int = DEFAULT_EPOCHS,
         save_file: str = None,
         load_existing: bool = True,
@@ -161,7 +164,12 @@ class Synthesizer(DataProcessing):
 
     # -----------------------------------
     def _set_df_mult(
-        self, df: pd.DataFrame, label_col: str, X: pd.DataFrame, y: pd.DataFrame, require_set: bool = False
+        self,
+        df: pd.DataFrame,
+        label_col: str,
+        X: pd.DataFrame,
+        y: pd.DataFrame,
+        require_set: bool = False,
     ):
         """
         Overwrites the _set_df_mult from the BaseClass. Here the label column is added to
@@ -206,7 +214,7 @@ class Synthesizer(DataProcessing):
         Check if the value provided to the model parameter in the constructor
         method is valid or not.
         """
-        if isinstance(self.model, BaseTabularModel):
+        if isinstance(self.model, BaseSingleTableSynthesizer):
             return
         if self.model not in self.VALID_MODELS:
             raise ValueError(
@@ -227,16 +235,16 @@ class Synthesizer(DataProcessing):
         provided model is a string identifying which model should be
         instantiated, instantiate the model using default parameters.
         """
-        if isinstance(self.model, BaseTabularModel):
+        if isinstance(self.model, BaseSingleTableSynthesizer):
             return
         if self.model == "ctgan":
-            self.model = CTGAN(epochs=self.epochs)
+            self.model = CTGANSynthesizer(epochs=self.epochs)
         elif self.model == "copula_gan":
-            self.model = CopulaGAN(epochs=self.epochs)
+            self.model = CopulaGANSynthesizer(epochs=self.epochs)
         elif self.model == "tvae":
-            self.model = TVAE(epochs=self.epochs)
+            self.model = TVAESynthesizer(epochs=self.epochs)
         elif self.model == "copula":
-            self.model = GaussianCopula()
+            self.model = GaussianCopulaSynthesizer()
 
     # -----------------------------------
     def _set_model(self):
@@ -278,7 +286,9 @@ class Synthesizer(DataProcessing):
         """
         loaded = False
         if self.load_existing and os.path.exists(self.save_file):
-            self.print_message(f"Loading existing sythesizer model ({self.save_file})...")
+            self.print_message(
+                f"Loading existing sythesizer model ({self.save_file})..."
+            )
             self.model = self.model.load(self.save_file)
             self.print_message(f"LOADED model of class {type(self.model).__name__}.")
             loaded = True
@@ -345,8 +355,12 @@ class Synthesizer(DataProcessing):
         strategy_dict["value_counts"] = label_values
         strategy_dict["majority"] = labels_ordered[0]
         strategy_dict["minority"] = labels_ordered[-1]
-        strategy_dict["not minority"] = [key for key in labels_ordered if key != strategy_dict["minority"]]
-        strategy_dict["not majority"] = [key for key in labels_ordered if key != strategy_dict["majority"]]
+        strategy_dict["not minority"] = [
+            key for key in labels_ordered if key != strategy_dict["minority"]
+        ]
+        strategy_dict["not majority"] = [
+            key for key in labels_ordered if key != strategy_dict["majority"]
+        ]
         strategy_dict["all"] = labels_ordered
         return strategy_dict
 
@@ -393,7 +407,9 @@ class Synthesizer(DataProcessing):
                 f"ERROR: invalid value {strategy} for variable 'strategy'. "
                 + f"The only valid string values for 'strategy' are: {self.VALID_STRATEGY}."
             )
-        elif type(strategy) != str and type(strategy) != float and type(strategy) != dict:
+        elif (
+            type(strategy) != str and type(strategy) != float and type(strategy) != dict
+        ):
             raise ValueError(
                 f"ERROR: invalid value {strategy} for variable 'strategy'."
                 + f"Expected 'strategy' to be a float, a string or a dictionary."
@@ -417,7 +433,9 @@ class Synthesizer(DataProcessing):
         return e
 
     # -----------------------------------
-    def _strategy_to_samples_number(self, df: pd.DataFrame, strategy: Union[str, dict, float]):
+    def _strategy_to_samples_number(
+        self, df: pd.DataFrame, strategy: Union[str, dict, float]
+    ):
         """
         Converts the strategy parameter (a string, dictionary, or float value) to a dictionary
         that indicates how many instances should be created for each class.
@@ -442,7 +460,9 @@ class Synthesizer(DataProcessing):
                     + f"predefined strategies: {self.VALID_STRATEGY}"
                 )
             e = self._get_num_samples_to_create(
-                m0=label_values[minority_label], M0=label_values[majority_label], r1=strategy
+                m0=label_values[minority_label],
+                M0=label_values[majority_label],
+                r1=strategy,
             )
             samples_dict[minority_label] = int(e)
         if type(strategy) == dict:
@@ -450,18 +470,24 @@ class Synthesizer(DataProcessing):
         else:
             if strategy == "minority" or strategy == "auto":
                 e = self._get_num_samples_to_create(
-                    m0=label_values[minority_label], M0=label_values[majority_label], r1=1.0
+                    m0=label_values[minority_label],
+                    M0=label_values[majority_label],
+                    r1=1.0,
                 )
                 samples_dict[minority_label] = int(e)
             elif strategy == "not majority":
                 for value in strategy_dict["not majority"]:
-                    e = self._get_num_samples_to_create(m0=label_values[value], M0=label_values[majority_label], r1=1.0)
+                    e = self._get_num_samples_to_create(
+                        m0=label_values[value], M0=label_values[majority_label], r1=1.0
+                    )
                     samples_dict[value] = int(e)
 
         return samples_dict
 
     # -----------------------------------
-    def _generate_samples_strategy(self, df: pd.DataFrame, strategy: Union[str, dict, float]):
+    def _generate_samples_strategy(
+        self, df: pd.DataFrame, strategy: Union[str, dict, float]
+    ):
         """
         Given a dataset and a sampling strategy, get the number of instances that should be
         created for each class (using the method _strategy_to_samples_number) and then create
@@ -519,7 +545,9 @@ class Synthesizer(DataProcessing):
             conditions = conditions_df.to_dict("records")[0]
 
             conditions_obj = Condition(conditions, num_rows=n_samples)
-            samples = self.model.sample_conditions(conditions=[conditions_obj], max_tries_per_batch=200)
+            samples = self.model.sample_conditions(
+                conditions=[conditions_obj], max_tries_per_batch=200
+            )
         return samples
 
     # -----------------------------------
@@ -590,7 +618,9 @@ class Synthesizer(DataProcessing):
         :rtype: pd.DataFrame or np.ndarray
         """
         if n_samples is None and conditions is not None:
-            raise ValueError("ERROR: if 'conditions' is provided, the parameter 'n_samples' is also required.")
+            raise ValueError(
+                "ERROR: if 'conditions' is provided, the parameter 'n_samples' is also required."
+            )
 
         self._fit(X, y, df, label_col)
 
